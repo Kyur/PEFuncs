@@ -1,10 +1,11 @@
+#pragma once
 #include <Windows.h>
 
 typedef struct _PEHANDLE
 {
 	DWORD fileFullSize;
 	PBYTE pFile;
-	
+
 	IMAGE_DOS_HEADER dosHeader;
 	IMAGE_NT_HEADERS ntHeader;
 	PIMAGE_SECTION_HEADER pSectionHeader;
@@ -24,6 +25,8 @@ EXTERN_C __declspec(dllexport) BOOL SetSectionHeaderStructure(PPEHANDLE);
 
 // Service Functions
 EXTERN_C __declspec(dllexport) BOOL IsPeFile(PPEHANDLE);
+EXTERN_C __declspec(dllexport) BOOL HasExtraSection(PPEHANDLE);
+
 EXTERN_C __declspec(dllexport) DWORD GetNumberOfSections(PPEHANDLE);
 EXTERN_C __declspec(dllexport) DWORD GetEntryPointRVA(PPEHANDLE);
 EXTERN_C __declspec(dllexport) DWORD GetEntryPointRAW(PPEHANDLE);
