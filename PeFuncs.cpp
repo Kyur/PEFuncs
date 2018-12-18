@@ -108,6 +108,15 @@ BOOL SetSectionHeaderStructure(PPEHANDLE hPe)
 }
 
 
+BOOL CheckSectionNumberRange(PPEHANDLE hPe, DWORD nSectionCnt)
+{
+	if ( ( 0 < nSectionCnt ) && ( nSectionCnt <= hPe->ntHeader.FileHeader.NumberOfSections ) )
+		return TRUE;
+
+	return FALSE;
+}
+
+
 
 // ========== Service Functions
 
@@ -203,7 +212,7 @@ BOOL HasExtraSection(PPEHANDLE hPe)
 
 	_pSectionHeader = hPe->pSectionHeader;
 
-	for ( sectionCnt = 1; sectionCnt <= (hPe->ntHeader.FileHeader.NumberOfSections); sectionCnt++ )
+	for (sectionCnt = 1; sectionCnt <= (hPe->ntHeader.FileHeader.NumberOfSections); sectionCnt++)
 	{
 		if (sectionCnt == (hPe->ntHeader.FileHeader.NumberOfSections))
 		{
@@ -216,7 +225,7 @@ BOOL HasExtraSection(PPEHANDLE hPe)
 		_pSectionHeader++;
 	}
 
-	if ( dwTotalSectionSize < hPe->fileFullSize )
+	if (dwTotalSectionSize < hPe->fileFullSize)
 	{
 		return TRUE;
 	}
@@ -224,3 +233,76 @@ BOOL HasExtraSection(PPEHANDLE hPe)
 	return FALSE;
 }
 
+
+DWORD GetSectionVirtualAddress(PPEHANDLE hPe, DWORD nSection)
+{
+	DWORD sectionVirtualAddress = 0;
+	
+	if ( CheckSectionNumberRange(hPe, nSection) )
+	{
+		nSection -= 1;
+
+		sectionVirtualAddress = ((hPe->pSectionHeader) + nSection)->VirtualAddress;
+		return sectionVirtualAddress;
+	}
+	
+	return 0xFFFFFFFF;
+}
+
+
+DWORD GetSectionVirtualSize(PPEHANDLE hPe, DWORD nSection)
+{
+	DWORD sectionVirtualSize = 0;
+
+	nSection -= 1;
+
+	if ( CheckSectionNumberRange(hPe, nSection) )
+	{
+		sectionVirtualSize = ((hPe->pSectionHeader) + nSection)->Misc.VirtualSize;
+		return sectionVirtualSize;
+	}
+
+	return 0xFFFFFFFF;
+}
+
+
+DWORD GetSectionSizeOfRawData(PPEHANDLE hPe, DWORD nSection)
+{
+	DWORD sectionSizeOfRawData = 0;
+
+	nSection -= 1;
+
+	if ( CheckSectionNumberRange(hPe, nSection) )
+	{
+		sectionSizeOfRawData = (hPe->pSectionHeader + nSection)->SizeOfRawData;
+		return sectionSizeOfRawData;
+	}
+
+	return 0xFFFFFFFF;
+}
+
+DWORD GetSectionPointerToRawData(PPEHANDLE hPe, DWORD nSection)
+{
+	DWORD sectionPointerToRawdata = 0;
+
+	nSection -= 1;
+
+	if ( CheckSectionNumberRange(hPe, nSection) )
+	{
+		sectionPointerToRawdata = (hPe->pSectionHeader + nSection)->PointerToRawData;
+		return sectionPointerToRawdata;
+	}
+
+	return 0xFFFFFFFF;
+}
+
+
+DWORD GetImageBase(PPEHANDLE hPe)
+{
+	return hPe->ntHeader.OptionalHeader.ImageBase;
+}
+
+DWORD GetSizeOfImage(PPEHANDLE hPe)
+{
+	return hPe->ntHeader.OptionalHeader.SizeOfImage;
+}
