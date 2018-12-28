@@ -1,6 +1,8 @@
 #pragma once
 #include <Windows.h>
-#include "dbgPrint.h"
+#include <stdio.h>
+#include <stdarg.h>
+
 
 // Do not use this structure direct
 typedef struct _PEHANDLE
@@ -23,6 +25,8 @@ EXTERN_C __declspec(dllexport) BOOL SetNtHeaderStructure(PPEHANDLE);
 EXTERN_C __declspec(dllexport) BOOL SetSectionHeaderStructure(PPEHANDLE);
 EXTERN_C __declspec(dllexport) BOOL CheckSectionNumberRange(PPEHANDLE, DWORD);
 
+EXTERN_C __declspec(dllexport) VOID OutputDebugStringFormat(char*, ...);
+
 
 // ---------------------------------------- Service Functions ----------------------------------------
 
@@ -36,19 +40,21 @@ EXTERN_C __declspec(dllexport) BOOL IsPeFile(PPEHANDLE);
 EXTERN_C __declspec(dllexport) BOOL HasExtraSection(PPEHANDLE);
 EXTERN_C __declspec(dllexport) DWORD RVAtoRAW(PPEHANDLE, DWORD);
 EXTERN_C __declspec(dllexport) DWORD RVAtoVA(PPEHANDLE, DWORD);
-EXTERN_C __declspec(dllexport) DWORD GetSectionOffset(PPEHANDLE, DWORD);
 
-// With IMAGE_FILE_HADER fucnctions
+// IMAGE_FILE_HADER fucnctions
 EXTERN_C __declspec(dllexport) DWORD GetNumberOfSections(PPEHANDLE);
 
-// With IMAGE_OPTIONAL_HEADER fuctions
+// IMAGE_OPTIONAL_HEADER fuctions
 EXTERN_C __declspec(dllexport) DWORD GetEntryPointRVA(PPEHANDLE);
 EXTERN_C __declspec(dllexport) DWORD GetEntryPointRAW(PPEHANDLE);
 EXTERN_C __declspec(dllexport) DWORD GetImageBase(PPEHANDLE);
 EXTERN_C __declspec(dllexport) DWORD GetSizeOfImage(PPEHANDLE);
 
-// With IMAGE_SECTION_HEADER functions
-EXTERN_C __declspec(dllexport) DWORD GetSectionVirtualAddress(PPEHANDLE, DWORD);
-EXTERN_C __declspec(dllexport) DWORD GetSectionVirtualSize(PPEHANDLE, DWORD);
-EXTERN_C __declspec(dllexport) DWORD GetSectionSizeOfRawData(PPEHANDLE, DWORD);
-EXTERN_C __declspec(dllexport) DWORD GetSectionPointerToRawData(PPEHANDLE, DWORD);
+// IMAGE_SECTION_HEADER functions
+EXTERN_C __declspec(dllexport) DWORD GetSectionHeaderOffset(PPEHANDLE, DWORD);
+EXTERN_C __declspec(dllexport) DWORD GetVirtualAddress(PPEHANDLE, DWORD);
+EXTERN_C __declspec(dllexport) DWORD GetVirtualSize(PPEHANDLE, DWORD);
+EXTERN_C __declspec(dllexport) DWORD GetSizeOfRawData(PPEHANDLE, DWORD);
+EXTERN_C __declspec(dllexport) DWORD GetPointerToRawData(PPEHANDLE, DWORD);
+
+
