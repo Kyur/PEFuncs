@@ -1,7 +1,6 @@
 #include "PeFuncs.h"
 
 
-
 // ========== Create/Close PE Handle
 
 EXTERN_C __declspec(dllexport) PPEHANDLE CreatePeHandle(HANDLE hFile)
@@ -38,15 +37,26 @@ BOOL ClosePeHandle(PPEHANDLE hPe)
 {
 	// Release target file data
 	if (VirtualFree(hPe->pFile, 0x00, MEM_RELEASE) == 0)
+	{
+		OutputDebugStringFormat((char*)"ERROR: VirtualFree(hPe->pFile) %08X", GetLastError());
 		return FALSE;
+	}
 
+	/*
 	// Relase IMAGE_SECTION_HEADER
 	if (VirtualFree(hPe->pSectionHeader, 0x00, MEM_RELEASE) == 0)
+	{
+		OutputDebugStringFormat((char*)"ERROR: VirtualFree(hPe->pSectionHeader) %08X", GetLastError());
 		return FALSE;
+	}
+	*/
 
 	// Release PEHANDLE structure
 	if (VirtualFree(hPe, 0x00, MEM_RELEASE) == 0)
+	{
+		OutputDebugStringFormat((char*)"ERROR: VirtualFree(hPe) %08X", GetLastError());
 		return FALSE;
+	}
 
 	return TRUE;
 }
@@ -97,7 +107,7 @@ BOOL SetSectionHeaderStructure(PPEHANDLE hPe)
 	dwSectionHeaderSize = sizeof(IMAGE_SECTION_HEADER);
 	dwNumberOfSections = hPe->ntHeader.FileHeader.NumberOfSections;
 
-	hPe->pSectionHeader = (PIMAGE_SECTION_HEADER)VirtualAlloc(NULL, (dwSectionHeaderSize * dwNumberOfSections), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+	// hPe->pSectionHeader = (PIMAGE_SECTION_HEADER)VirtualAlloc(NULL, (dwSectionHeaderSize * dwNumberOfSections), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 
 	dwSectionHeaderStartOffset += hPe->dosHeader.e_lfanew;
 	dwSectionHeaderStartOffset += sizeof(IMAGE_NT_HEADERS);
@@ -305,4 +315,19 @@ DWORD GetImageBase(PPEHANDLE hPe)
 DWORD GetSizeOfImage(PPEHANDLE hPe)
 {
 	return hPe->ntHeader.OptionalHeader.SizeOfImage;
+}
+
+
+DWORD GetSectionOffset(PPEHANDLE hPe, DWORD nSection)
+{
+	DWORD dwOffsetFirstSectionHeader = 0;
+	nSection -= 1;
+
+	if ( CheckSectionNumberRange(hPe, nSection) )
+	{
+		dwOffsetFirstSectionHeader = hPe->dosHeader.e_lfanew + sizeof(IMAGE_FILE_HEADER) + sizeof(hPe->ntHeader.Signature);
+		return dwOffsetFirstSectionHeader + (sizeof(IMAGE_SECTION_HEADER) * nSection);
+	}
+
+	return 0xFFFFFFFF;
 }

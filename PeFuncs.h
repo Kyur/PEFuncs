@@ -1,5 +1,6 @@
 #pragma once
 #include <Windows.h>
+#include "dbgPrint.h"
 
 // Do not use this structure direct
 typedef struct _PEHANDLE
@@ -35,6 +36,7 @@ EXTERN_C __declspec(dllexport) BOOL IsPeFile(PPEHANDLE);
 EXTERN_C __declspec(dllexport) BOOL HasExtraSection(PPEHANDLE);
 EXTERN_C __declspec(dllexport) DWORD RVAtoRAW(PPEHANDLE, DWORD);
 EXTERN_C __declspec(dllexport) DWORD RVAtoVA(PPEHANDLE, DWORD);
+EXTERN_C __declspec(dllexport) DWORD GetSectionOffset(PPEHANDLE, DWORD);
 
 // With IMAGE_FILE_HADER fucnctions
 EXTERN_C __declspec(dllexport) DWORD GetNumberOfSections(PPEHANDLE);
