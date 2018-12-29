@@ -1,5 +1,18 @@
 #include "PeFuncs.h"
 
+// ----- PE Headers size
+#define SIZE_IMAGE_SECTION_HEADER sizeof(IMAGE_SECTION_HEADER)
+#define SIZE_IMAGE_NT_HEAEDER sizeof(IMAGE_NT_HEADERS)
+#define SIZE_IMAGE_FILE_HEADER sizeof(IMAGE_FILE_HEADER)
+#define SIZE_IMAGE_OPTIONAL_HEADER sizeof(IMAGE_OPTIONAL_HEADER)
+
+// ----- Value for inner function
+#define FIRST_SECTION 0x01
+#define SIZE_IMAGE_NT_HEADER_SIGNATURE 0x04
+
+// ----- Macro
+#define ConvertUserIndex(REAL_INDEX) --REAL_INDEX
+
 
 
 // ==================== Inner Functions
@@ -40,20 +53,21 @@ BOOL SetNtHeaderStructure(PPEHANDLE hPe)
 BOOL SetSectionHeaderStructure(PPEHANDLE hPe)
 {
 	DWORD dwSectionHeaderStartOffset = 0;
-	DWORD dwSectionHeaderSize = 0;
 	DWORD dwNumberOfSections = 0;
 
-	dwSectionHeaderSize = sizeof(IMAGE_SECTION_HEADER);
-	dwNumberOfSections = hPe->ntHeader.FileHeader.NumberOfSections;
+	dwNumberOfSections = GetNumberOfSections(hPe);
 
-	// hPe->pSectionHeader = (PIMAGE_SECTION_HEADER)VirtualAlloc(NULL, (dwSectionHeaderSize * dwNumberOfSections), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+	hPe->pSectionHeader = (PIMAGE_SECTION_HEADER)VirtualAlloc(NULL, (SIZE_IMAGE_SECTION_HEADER * dwNumberOfSections), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 
-	dwSectionHeaderStartOffset += hPe->dosHeader.e_lfanew;
-	dwSectionHeaderStartOffset += sizeof(IMAGE_NT_HEADERS);
+	dwSectionHeaderStartOffset = GetSectionHeaderOffset(hPe, FIRST_SECTION);
+	if (dwSectionHeaderStartOffset != PE_INVAILD_VALUE)
+	{
+		memcpy(hPe->pSectionHeader, (hPe->pFile + dwSectionHeaderStartOffset), (SIZE_IMAGE_SECTION_HEADER * dwNumberOfSections));
+		return TRUE;
+	}
 
-	hPe->pSectionHeader = (PIMAGE_SECTION_HEADER)(hPe->pFile + dwSectionHeaderStartOffset);
-
-	return TRUE;
+	OutputDebugStringFormat("ERROR: SetSectionHeaderStructure(), Invaild Section header start offset");
+	return FALSE;
 }
 
 
@@ -66,7 +80,7 @@ BOOL CheckSectionNumberRange(PPEHANDLE hPe, DWORD nSectionCnt)
 }
 
 
-VOID OutputDebugStringFormat(char* str, ...)
+VOID OutputDebugStringFormat(const char* str, ...)
 {
 	va_list vaList_dbgStr;
 	char errorStr[MAX_PATH] = { 0, };
@@ -87,6 +101,7 @@ VOID OutputDebugStringFormat(char* str, ...)
 PPEHANDLE CreatePeHandle(HANDLE hFile)
 {
 	DWORD lpNumberOfBytesRead = 0;
+	DWORD dwNumberOfSectionsTemp = 0;
 	PPEHANDLE hPe = NULL;
 
 
@@ -118,23 +133,21 @@ BOOL ClosePeHandle(PPEHANDLE hPe)
 	// Release target file data
 	if (VirtualFree(hPe->pFile, 0x00, MEM_RELEASE) == 0)
 	{
-		OutputDebugStringFormat((char*)"ERROR: VirtualFree(hPe->pFile) %08X", GetLastError());
+		OutputDebugStringFormat("ERROR: VirtualFree(hPe->pFile) %08X", GetLastError());
 		return FALSE;
 	}
 
-	/*
 	// Relase IMAGE_SECTION_HEADER
 	if (VirtualFree(hPe->pSectionHeader, 0x00, MEM_RELEASE) == 0)
 	{
-		OutputDebugStringFormat((char*)"ERROR: VirtualFree(hPe->pSectionHeader) %08X", GetLastError());
+		OutputDebugStringFormat("ERROR: VirtualFree(hPe->pSectionHeader) %08X", GetLastError());
 		return FALSE;
 	}
-	*/
 
 	// Release PEHANDLE structure
 	if (VirtualFree(hPe, 0x00, MEM_RELEASE) == 0)
 	{
-		OutputDebugStringFormat((char*)"ERROR: VirtualFree(hPe) %08X", GetLastError());
+		OutputDebugStringFormat("ERROR: VirtualFree(hPe) %08X", GetLastError());
 		return FALSE;
 	}
 
@@ -223,21 +236,33 @@ DWORD RVAtoVA(PPEHANDLE hPe, DWORD dwRva)
 
 
 
-// ==================== IMAGE_FILE_HADER fucnctions
+// ==================== IMAGE_DOS_HEADER functions
+
+DWORD GetElfanewValue(PPEHANDLE hPe)
+{
+	return hPe->dosHeader.e_lfanew;
+}
+
+
+
+// ==================== IMAGE_FILE_HADER funcctions
 
 DWORD GetNumberOfSections(PPEHANDLE hPe)
 {
 	DWORD dwNumberOfSections = 0;
 
-	if (!(dwNumberOfSections = hPe->ntHeader.FileHeader.NumberOfSections))
-		return 0;
-
+	if ((dwNumberOfSections = hPe->ntHeader.FileHeader.NumberOfSections) <= 0x00)
+	{
+		OutputDebugStringFormat("ERROR: GetNumberOfSections(), Invaild NumberOfSections");
+		return PE_INVAILD_VALUE;
+	}
+		
 	return dwNumberOfSections;
 }
 
 
 
-// ==================== IMAGE_OPTIONAL_HEADER fuctions
+// ==================== IMAGE_OPTIONAL_HEADER functions
 
 DWORD GetEntryPointRVA(PPEHANDLE hPe)
 {
@@ -283,15 +308,16 @@ DWORD GetSectionHeaderOffset(PPEHANDLE hPe, DWORD nSection)
 {
 	DWORD dwOffsetFirstSectionHeader = 0;
 
-	if ( CheckSectionNumberRange(hPe, nSection) )
+	if ( !CheckSectionNumberRange(hPe, nSection) )
 	{
-		nSection -= 1;
-
-		dwOffsetFirstSectionHeader = hPe->dosHeader.e_lfanew + sizeof(hPe->ntHeader.Signature) + sizeof(IMAGE_FILE_HEADER) + sizeof(IMAGE_OPTIONAL_HEADER);
-		return dwOffsetFirstSectionHeader + (sizeof(IMAGE_SECTION_HEADER) * nSection);
+		OutputDebugStringFormat("ERROR: GetSectionHeaderOffset(), Invaild section number.");
+		return PE_INVAILD_VALUE;
 	}
 
-	return 0xFFFFFFFF;
+	ConvertUserIndex(nSection);
+
+	dwOffsetFirstSectionHeader = GetElfanewValue(hPe) + SIZE_IMAGE_NT_HEAEDER;
+	return dwOffsetFirstSectionHeader + (SIZE_IMAGE_SECTION_HEADER * nSection);
 }
 
 
@@ -299,15 +325,16 @@ DWORD GetVirtualAddress(PPEHANDLE hPe, DWORD nSection)
 {
 	DWORD sectionVirtualAddress = 0;
 	
-	if ( CheckSectionNumberRange(hPe, nSection) )
+	if ( !CheckSectionNumberRange(hPe, nSection) )
 	{
-		nSection -= 1;
-
-		sectionVirtualAddress = ( hPe->pSectionHeader + nSection )->VirtualAddress;
-		return sectionVirtualAddress;
+		OutputDebugStringFormat("ERROR: GetVirtualAddress(), Invaild section number.");
+		return PE_INVAILD_VALUE;
 	}
 	
-	return 0xFFFFFFFF;
+	ConvertUserIndex(nSection);
+
+	sectionVirtualAddress = (hPe->pSectionHeader + nSection)->VirtualAddress;
+	return sectionVirtualAddress;
 }
 
 
@@ -315,17 +342,16 @@ DWORD GetVirtualSize(PPEHANDLE hPe, DWORD nSection)
 {
 	DWORD sectionVirtualSize = 0;
 
-	
-
-	if ( CheckSectionNumberRange(hPe, nSection) )
+	if ( !CheckSectionNumberRange(hPe, nSection) )
 	{
-		nSection -= 1;
-
-		sectionVirtualSize = ((hPe->pSectionHeader) + nSection)->Misc.VirtualSize;
-		return sectionVirtualSize;
+		OutputDebugStringFormat("ERROR: GetVirtualSize(), Invaild section number.");
+		return PE_INVAILD_VALUE;
 	}
 
-	return 0xFFFFFFFF;
+	ConvertUserIndex(nSection);
+
+	sectionVirtualSize = ((hPe->pSectionHeader) + nSection)->Misc.VirtualSize;
+	return sectionVirtualSize;
 }
 
 
@@ -333,15 +359,16 @@ DWORD GetSizeOfRawData(PPEHANDLE hPe, DWORD nSection)
 {
 	DWORD sectionSizeOfRawData = 0;
 
-	if ( CheckSectionNumberRange(hPe, nSection) )
+	if ( !CheckSectionNumberRange(hPe, nSection) )
 	{
-		nSection -= 1;
-
-		sectionSizeOfRawData = ( hPe->pSectionHeader + nSection )->SizeOfRawData;
-		return sectionSizeOfRawData;
+		OutputDebugStringFormat("ERROR: GetSizeOfRawData(), Invaild section number.");
+		return PE_INVAILD_VALUE;
 	}
 
-	return 0xFFFFFFFF;
+	ConvertUserIndex(nSection);
+
+	sectionSizeOfRawData = (hPe->pSectionHeader + nSection)->SizeOfRawData;
+	return sectionSizeOfRawData;
 }
 
 
@@ -349,15 +376,16 @@ DWORD GetPointerToRawData(PPEHANDLE hPe, DWORD nSection)
 {
 	DWORD sectionPointerToRawdata = 0;
 
-	if ( CheckSectionNumberRange(hPe, nSection) )
+	if ( !CheckSectionNumberRange(hPe, nSection) )
 	{
-		nSection -= 1;
-
-		sectionPointerToRawdata = ( hPe->pSectionHeader + nSection )->PointerToRawData;
-		return sectionPointerToRawdata;
+		OutputDebugStringFormat("ERROR: GetPointerToRawData(), Invaild section number.");
+		return PE_INVAILD_VALUE;
 	}
 
-	return 0xFFFFFFFF;
+	ConvertUserIndex(nSection);
+
+	sectionPointerToRawdata = (hPe->pSectionHeader + nSection)->PointerToRawData;
+	return sectionPointerToRawdata;
 }
 
 
