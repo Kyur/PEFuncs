@@ -1,5 +1,19 @@
 #include "PeFuncs.h"
 
+
+// PEHANDLE Structure
+struct _PEHANDLE
+{
+	DWORD fileFullSize;
+
+	IMAGE_DOS_HEADER dosHeader;
+	IMAGE_NT_HEADERS ntHeader;
+	PIMAGE_SECTION_HEADER pSectionHeader;
+
+	PBYTE pFile;
+};
+
+
 // ----- PE Headers size
 #define SIZE_IMAGE_SECTION_HEADER sizeof(IMAGE_SECTION_HEADER)
 #define SIZE_IMAGE_NT_HEAEDER sizeof(IMAGE_NT_HEADERS)
@@ -17,7 +31,7 @@
 
 // ==================== Inner Functions
 
-BOOL ParsePE(PPEHANDLE hPe)
+BOOL ParsePE(PEHANDLE hPe)
 {
 
 	if (!SetDosHeaderStructure(hPe))
@@ -31,7 +45,7 @@ BOOL ParsePE(PPEHANDLE hPe)
 }
 
 
-BOOL SetDosHeaderStructure(PPEHANDLE hPe)
+BOOL SetDosHeaderStructure(PEHANDLE hPe)
 {
 	memcpy(&hPe->dosHeader, hPe->pFile, sizeof(IMAGE_DOS_HEADER));
 
@@ -39,7 +53,7 @@ BOOL SetDosHeaderStructure(PPEHANDLE hPe)
 }
 
 
-BOOL SetNtHeaderStructure(PPEHANDLE hPe)
+BOOL SetNtHeaderStructure(PEHANDLE hPe)
 {
 	PBYTE pNtHeader = NULL;
 
@@ -50,7 +64,7 @@ BOOL SetNtHeaderStructure(PPEHANDLE hPe)
 }
 
 
-BOOL SetSectionHeaderStructure(PPEHANDLE hPe)
+BOOL SetSectionHeaderStructure(PEHANDLE hPe)
 {
 	DWORD dwSectionHeaderStartOffset = 0;
 	DWORD dwNumberOfSections = 0;
@@ -71,7 +85,7 @@ BOOL SetSectionHeaderStructure(PPEHANDLE hPe)
 }
 
 
-BOOL CheckSectionNumberRange(PPEHANDLE hPe, DWORD nSectionCnt)
+BOOL CheckSectionNumberRange(PEHANDLE hPe, DWORD nSectionCnt)
 {
 	if ((0 < nSectionCnt) && (nSectionCnt <= hPe->ntHeader.FileHeader.NumberOfSections))
 		return TRUE;
@@ -93,20 +107,19 @@ VOID OutputDebugStringFormat(const char* str, ...)
 }
 
 
-
 // ---------------------------------------- Service Functions ----------------------------------------
 
 // ==================== Create/Close PE Handle
 
-PPEHANDLE CreatePeHandle(HANDLE hFile)
+PEHANDLE CreatePeHandle(HANDLE hFile)
 {
 	DWORD lpNumberOfBytesRead = 0;
 	DWORD dwNumberOfSectionsTemp = 0;
-	PPEHANDLE hPe = NULL;
+	PEHANDLE hPe = NULL;
 
 
 	// Create PEHANDLE structure
-	hPe = (PPEHANDLE)VirtualAlloc(NULL, sizeof(PEHANDLE), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+	hPe = (PEHANDLE)VirtualAlloc(NULL, sizeof(_PEHANDLE), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 	if (hPe == NULL)
 		return NULL;
 
@@ -128,7 +141,7 @@ PPEHANDLE CreatePeHandle(HANDLE hFile)
 }
 
 
-BOOL ClosePeHandle(PPEHANDLE hPe)
+BOOL ClosePeHandle(PEHANDLE hPe)
 {
 	// Release target file data
 	if (VirtualFree(hPe->pFile, 0x00, MEM_RELEASE) == 0)
@@ -158,7 +171,7 @@ BOOL ClosePeHandle(PPEHANDLE hPe)
 
 // ==================== Normal functions
 
-BOOL IsPeFile(PPEHANDLE hPe)
+BOOL IsPeFile(PEHANDLE hPe)
 {
 	if (hPe->dosHeader.e_magic == IMAGE_DOS_SIGNATURE)
 	{
@@ -172,7 +185,7 @@ BOOL IsPeFile(PPEHANDLE hPe)
 }
 
 
-BOOL HasExtraSection(PPEHANDLE hPe)
+BOOL HasExtraSection(PEHANDLE hPe)
 {
 	DWORD dwTotalSectionSize = 0;
 	DWORD sectionCnt = 0;
@@ -202,7 +215,7 @@ BOOL HasExtraSection(PPEHANDLE hPe)
 }
 
 
-DWORD RVAtoRAW(PPEHANDLE hPe, DWORD dwRva)
+DWORD RVAtoRAW(PEHANDLE hPe, DWORD dwRva)
 {
 	DWORD returnVal = 0;
 	DWORD sectionCnt = 0;
@@ -229,7 +242,7 @@ DWORD RVAtoRAW(PPEHANDLE hPe, DWORD dwRva)
 }
 
 
-DWORD RVAtoVA(PPEHANDLE hPe, DWORD dwRva)
+DWORD RVAtoVA(PEHANDLE hPe, DWORD dwRva)
 {
 	return hPe->ntHeader.OptionalHeader.ImageBase + dwRva;
 }
@@ -238,7 +251,7 @@ DWORD RVAtoVA(PPEHANDLE hPe, DWORD dwRva)
 
 // ==================== IMAGE_DOS_HEADER functions
 
-DWORD GetElfanewValue(PPEHANDLE hPe)
+DWORD GetElfanewValue(PEHANDLE hPe)
 {
 	return hPe->dosHeader.e_lfanew;
 }
@@ -247,7 +260,7 @@ DWORD GetElfanewValue(PPEHANDLE hPe)
 
 // ==================== IMAGE_FILE_HADER funcctions
 
-DWORD GetNumberOfSections(PPEHANDLE hPe)
+DWORD GetNumberOfSections(PEHANDLE hPe)
 {
 	DWORD dwNumberOfSections = 0;
 
@@ -264,7 +277,7 @@ DWORD GetNumberOfSections(PPEHANDLE hPe)
 
 // ==================== IMAGE_OPTIONAL_HEADER functions
 
-DWORD GetEntryPointRVA(PPEHANDLE hPe)
+DWORD GetEntryPointRVA(PEHANDLE hPe)
 {
 	DWORD dwEntryPointRva = 0;
 
@@ -275,7 +288,7 @@ DWORD GetEntryPointRVA(PPEHANDLE hPe)
 }
 
 
-DWORD GetEntryPointRAW(PPEHANDLE hPe)
+DWORD GetEntryPointRAW(PEHANDLE hPe)
 {
 	DWORD dwEntryPointRva = 0;
 	DWORD dwEntryPointRaw = 0;
@@ -290,13 +303,13 @@ DWORD GetEntryPointRAW(PPEHANDLE hPe)
 }
 
 
-DWORD GetImageBase(PPEHANDLE hPe)
+DWORD GetImageBase(PEHANDLE hPe)
 {
 	return hPe->ntHeader.OptionalHeader.ImageBase;
 }
 
 
-DWORD GetSizeOfImage(PPEHANDLE hPe)
+DWORD GetSizeOfImage(PEHANDLE hPe)
 {
 	return hPe->ntHeader.OptionalHeader.SizeOfImage;
 }
@@ -304,7 +317,7 @@ DWORD GetSizeOfImage(PPEHANDLE hPe)
 
 // ==================== IMAGE_SECTION_HEADER functions
 
-DWORD GetSectionHeaderOffset(PPEHANDLE hPe, DWORD nSection)
+DWORD GetSectionHeaderOffset(PEHANDLE hPe, DWORD nSection)
 {
 	DWORD dwOffsetFirstSectionHeader = 0;
 
@@ -321,7 +334,7 @@ DWORD GetSectionHeaderOffset(PPEHANDLE hPe, DWORD nSection)
 }
 
 
-DWORD GetVirtualAddress(PPEHANDLE hPe, DWORD nSection)
+DWORD GetVirtualAddress(PEHANDLE hPe, DWORD nSection)
 {
 	DWORD sectionVirtualAddress = 0;
 	
@@ -338,7 +351,7 @@ DWORD GetVirtualAddress(PPEHANDLE hPe, DWORD nSection)
 }
 
 
-DWORD GetVirtualSize(PPEHANDLE hPe, DWORD nSection)
+DWORD GetVirtualSize(PEHANDLE hPe, DWORD nSection)
 {
 	DWORD sectionVirtualSize = 0;
 
@@ -355,7 +368,7 @@ DWORD GetVirtualSize(PPEHANDLE hPe, DWORD nSection)
 }
 
 
-DWORD GetSizeOfRawData(PPEHANDLE hPe, DWORD nSection)
+DWORD GetSizeOfRawData(PEHANDLE hPe, DWORD nSection)
 {
 	DWORD sectionSizeOfRawData = 0;
 
@@ -372,7 +385,7 @@ DWORD GetSizeOfRawData(PPEHANDLE hPe, DWORD nSection)
 }
 
 
-DWORD GetPointerToRawData(PPEHANDLE hPe, DWORD nSection)
+DWORD GetPointerToRawData(PEHANDLE hPe, DWORD nSection)
 {
 	DWORD sectionPointerToRawdata = 0;
 
