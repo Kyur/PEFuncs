@@ -16,9 +16,9 @@ typedef struct __TYPE_NAME_LIST
 }_TYPE_NAME_LIST, *_PTYPE_NAME_LIST;
 
 
-VOID _MachineCodeConstructor(_PTYPE_NAME_LIST pMachineCode);
-BOOL _GetMachineCodeName(WORD machineCode, char* szMachineCodeName);
-VOID _GetTimeDataStampToTime(char* pszTimeStamp, size_t bufferSize, DWORD _timeStampDate);
+VOID _MachineCodeConstructor( _PTYPE_NAME_LIST pMachineCode );
+BOOL _GetMachineCodeName( WORD machineCode, char* szMachineCodeName );
+VOID _GetTimeDataStampToTime( char* pszTimeStamp, size_t bufferSize, DWORD _timeStampDate );
 
 /*
 _PTYPE_NAME_LIST _MachineCodeConstructor();

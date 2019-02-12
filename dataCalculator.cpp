@@ -1,6 +1,6 @@
 #include "dataCalculator.h""
 
-VOID _MachineCodeConstructor(_PTYPE_NAME_LIST pMachineCode)
+VOID _MachineCodeConstructor( _PTYPE_NAME_LIST pMachineCode )
 {
 	pMachineCode->dwTypeValue[0] = 0x00;
 	pMachineCode->dwTypeValue[1] = 0x0001;
@@ -69,17 +69,17 @@ VOID _MachineCodeConstructor(_PTYPE_NAME_LIST pMachineCode)
 	pMachineCode->szTypeName[31] = "IMAGE_FILE_MACHINE_CEE";
 }
 
-BOOL _GetMachineCodeName(WORD machineCode, char* szMachineCodeName)
+BOOL _GetMachineCodeName( WORD machineCode, char* szMachineCodeName )
 {
 	_TYPE_NAME_LIST MachineCode;
 
-	_MachineCodeConstructor(&MachineCode);
+	_MachineCodeConstructor( &MachineCode );
 
-	for (int cnt = 0; cnt <= MAX_NUMBER_OF_MACHINE_CODE; cnt++)
+	for ( int cnt = 0; cnt <= MAX_NUMBER_OF_MACHINE_CODE; cnt++ )
 	{
-		if (MachineCode.dwTypeValue[cnt] == machineCode )
+		if ( MachineCode.dwTypeValue[cnt] == machineCode )
 		{
-			strncpy(szMachineCodeName, MachineCode.szTypeName[cnt], strlen(MachineCode.szTypeName[cnt]));
+			strncpy( szMachineCodeName, MachineCode.szTypeName[cnt], strlen( MachineCode.szTypeName[cnt] ) );
 			return TRUE;
 		}
 	}
@@ -87,20 +87,20 @@ BOOL _GetMachineCodeName(WORD machineCode, char* szMachineCodeName)
 	return FALSE;
 }
 
-VOID _GetTimeDataStampToTime(char* pszTimeStamp, size_t bufferSize, DWORD _timeStampDate)
+VOID _GetTimeDataStampToTime( char* pszTimeStamp, size_t bufferSize, DWORD _timeStampDate )
 {
 	struct tm timeStruct;
 	time_t timer;
 
-	timer = (time_t)_timeStampDate;			// Get Time Stamp Data.
-	localtime_s(&timeStruct, &timer);		// Division time.
+	timer = (time_t) _timeStampDate;			// Get Time Stamp Data.
+	localtime_s( &timeStruct, &timer );		// Division time.
 
-	sprintf_s(pszTimeStamp, bufferSize, "%04d-%02d-%02d %02d:%02d:%02d",
-		timeStruct.tm_year + 1900, 
-		timeStruct.tm_mon + 1, 
+	sprintf_s( pszTimeStamp, bufferSize, "%04d-%02d-%02d %02d:%02d:%02d",
+		timeStruct.tm_year + 1900,
+		timeStruct.tm_mon + 1,
 		timeStruct.tm_mday,
-		timeStruct.tm_hour, 
-		timeStruct.tm_min, 
+		timeStruct.tm_hour,
+		timeStruct.tm_min,
 		timeStruct.tm_sec
 	);
 }
