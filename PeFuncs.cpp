@@ -121,34 +121,34 @@ BOOL WritePEValueToFile( PEHANDLE hPe, DWORD dwFileOffset, DWORD dwValue, DWORD 
 	llFileOffset.QuadPart = dwFileOffset;
 
 
-	if ( !IsValidFileHandle( hPe ) )
+	if ( !IsValidPEFileHandle( hPe ) )
 	{
-		OutputDebugStringFormat( "ERROR: WritePEValueToFile().IsValidFileHandle()" );
+		OutputDebugStringFormat( "ERROR: WritePEValueToFile(): IsValidFileHandle()" );
 		return FALSE;
 	}
 
 	if ( cSize == 0 )
 	{
-		OutputDebugStringFormat( "ERROR: WritePEValueToFile(), cSize cannot have 0" );
+		OutputDebugStringFormat( "ERROR: WritePEValueToFile(): cSize cannot have 0" );
 		return FALSE;
 	}
 
 
 	if ( !SetFilePointerEx( hPe->hFile, llFileOffset, NULL, FILE_BEGIN ) )
 	{
-		OutputDebugStringFormat( "ERROR: WritePEValueToFile().SetFilePointerEx(), %08X", GetLastError() );
+		OutputDebugStringFormat( "ERROR: WritePEValueToFile(): SetFilePointerEx(), %08X", GetLastError() );
 		return FALSE;
 	}
 
 	if ( !WriteFile( hPe->hFile, &dwValue, cSize, &lpNumberOfBytesWritten, NULL ) )
 	{
-		OutputDebugStringFormat( "ERROR: WritePEValueToFile().WriteFile(), %08X", GetLastError() );
+		OutputDebugStringFormat( "ERROR: WritePEValueToFile(): WriteFile(), %08X", GetLastError() );
 		return FALSE;
 	}
 
 	if ( lpNumberOfBytesWritten == 0 )
 	{
-		OutputDebugStringFormat( "ERROR: WritePEValueToFile(), lpNumberOfBytesWritten is 0" );
+		OutputDebugStringFormat( "ERROR: WritePEValueToFile(): lpNumberOfBytesWritten is 0" );
 		return FALSE;
 	}
 
@@ -156,23 +156,36 @@ BOOL WritePEValueToFile( PEHANDLE hPe, DWORD dwFileOffset, DWORD dwValue, DWORD 
 }
 
 
-BOOL IsValidFileHandle( PEHANDLE hPe )
+/*
+* Function Name : IsValidPEFileHandle
+*
+* Argument(1) : PEHANDLE
+*
+* Detail :	Use GetFileInformationByHandle() to validate the duplicate file handle.
+*			Check the return value of GetFileInformationByHandle() and the returned file attributes value.
+*
+* Return :	(SUCCESS) TRUE
+*			(FAIL) FALSE
+*/
+BOOL IsValidPEFileHandle( PEHANDLE hPe )
 {
 	BOOL bFileInfo = FALSE;
 	BY_HANDLE_FILE_INFORMATION lpFileInformation = { 0x00, };
 
 
+	// Try to read file information using a duplicate file handle.
 	bFileInfo = GetFileInformationByHandle( hPe->hFile, &lpFileInformation );
 
 	if ( bFileInfo == FALSE )
 	{
-		OutputDebugStringFormat( "ERROR: IsValidFileHandle() bFileInfo is FALSE, %08X", GetLastError() );
+		OutputDebugStringFormat( "ERROR: IsValidFileHandle(): GetFileInformationByHandle(), %08X", GetLastError() );
 		return FALSE;
 	}
 
+	// Check file attributes
 	if ( lpFileInformation.dwFileAttributes == 0x00 )
 	{
-		OutputDebugStringFormat( "ERROR: WritePEValueToFile(), lpFileInformation.dwFileAttributes is 0" );
+		OutputDebugStringFormat( "ERROR: WritePEValueToFile(): lpFileInformation.dwFileAttributes is 0" );
 		return FALSE;
 	}
 
@@ -180,10 +193,18 @@ BOOL IsValidFileHandle( PEHANDLE hPe )
 }
 
 
-// ---------------------------------------- Service Functions ----------------------------------------
-
-// ==================== Create/Close PE Handle
-
+/*
+* Function Name : CreatePeHandle
+*
+* Argument(1) : HANDLE (Handle opened with the CreateFile() function)
+*
+* Detail :	CreatePeHandle() must be called before to use PeDll.
+*			Do the followings. Duplicate original file handle, initiate _PEHANDLE structure, read file to memory.
+*			Then after, Start PE parsing(ParsePE).
+*
+* Return :	(SUCCESS) Pointer to _PEHANDLE structure
+*			(FAIL) NULL
+*/
 PEHANDLE CreatePeHandle( HANDLE hFile )
 {
 	DWORD lpNumberOfBytesRead = 0;
@@ -191,58 +212,91 @@ PEHANDLE CreatePeHandle( HANDLE hFile )
 	PEHANDLE hPe = NULL;
 
 
-	// Create PEHANDLE structure
-	hPe = (PEHANDLE) VirtualAlloc( NULL, sizeof( _PEHANDLE ), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE );
+	// Allocate _PEHANDLE structure
+	hPe = (PEHANDLE) VirtualAlloc( NULL, sizeof( _PEHANDLE ), MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE );
 	if ( hPe == NULL )
-		return NULL;
-
-
-	// DuplicateHandle
-	if ( !DuplicateHandle( GetCurrentProcess(), hFile, GetCurrentProcess(), &hPe->hFile, NULL, FALSE, DUPLICATE_SAME_ACCESS ) )
 	{
-		OutputDebugStringFormat( "ERROR: CreatePeHandle.DuplicateHandle(), %08X", GetLastError() );
+		OutputDebugStringFormat( "ERROR: CreatePeHandle: VirtualAlloc(), %08X", GetLastError() );
 		return NULL;
 	}
 
 
-	// Load target data (full size)
-	hPe->dwFileFullSize = GetFileSize( hPe->hFile, NULL );
-	hPe->pFile = (PBYTE) VirtualAlloc( NULL, hPe->dwFileFullSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE );
+	// Duplicate the original file handle with the same access right 
+	// * If you want to modify data with PeDll, you need to create file handle to GENERIC_WRITE.
+	if ( !DuplicateHandle( GetCurrentProcess(), hFile, GetCurrentProcess(), &hPe->hFile, NULL, FALSE, DUPLICATE_SAME_ACCESS ) )
+	{
+		OutputDebugStringFormat( "ERROR: CreatePeHandle: DuplicateHandle(), %08X", GetLastError() );
+		return NULL;
+	}
 
+	// Validation of duplicate handle
+	if ( !IsValidPEFileHandle( hPe ) )
+	{
+		OutputDebugStringFormat( "ERROR: CreatePeHandle: IsValidPEFileHandle(), %08X", GetLastError() );
+		return NULL;
+	}
+
+
+	hPe->dwFileFullSize = GetFileSize( hPe->hFile, NULL );
+	hPe->pFile = NULL;
+
+	// Allocate target file (full size)
+	hPe->pFile = (PBYTE) VirtualAlloc( NULL, hPe->dwFileFullSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE );
+	if ( hPe == NULL )
+	{
+		OutputDebugStringFormat( "ERROR: CreatePeHandle: VirtualAlloc(), %08X", GetLastError() );
+		return NULL;
+	}
+
+	// Read target file on memory (full size)
 	ReadFile( hPe->hFile, hPe->pFile, hPe->dwFileFullSize, &lpNumberOfBytesRead, NULL );
 	if ( lpNumberOfBytesRead == 0 )
 	{
-		OutputDebugStringFormat( "ERROR: CreatePeHandle.ReadFile(), %08X", GetLastError() );
+		OutputDebugStringFormat( "ERROR: CreatePeHandle: ReadFile(), %08X", GetLastError() );
 		return NULL;
 	}
 
 
-	// Set basic PE infomation
+	// Start pasing PE header
 	if ( !ParsePE( hPe ) )
+	{
+		OutputDebugStringFormat( "ERROR: CreatePeHandle: ParsePE(), %08X", GetLastError() );
 		return NULL;
+	}
 
 	return hPe;
 }
 
 
+/*
+* Function Name : ClosePeHandle
+*
+* Argument(1) : PEHANDLE (Handle created by the CreatePeHandle() function)
+*
+* Detail :	PeDll uses large memory area.
+*			Therefore, ClosePeHandle() must be called after you have finished using the PeDLL functions.
+*
+* Return :	(SUCCESS) TRUE
+*			(FAIL) FALSE
+*/
 BOOL ClosePeHandle( PEHANDLE hPe )
 {
 	// Close duplicated file handle
 	if ( !CloseHandle( hPe->hFile ) )
 	{
-		OutputDebugStringFormat( "ERROR: CloseHandle(hPe->hFile) %08X", GetLastError() );
+		OutputDebugStringFormat( "ERROR: ClosePeHandle: CloseHandle(), %08X", GetLastError() );
 		return FALSE;
 	}
 
-	// Release target file data
+	// Release the memory of a read target file
 	if ( !VirtualFree( hPe->pFile, 0x00, MEM_RELEASE ) )
 	{
-		OutputDebugStringFormat( "ERROR: VirtualFree(hPe->pFile) %08X", GetLastError() );
+		OutputDebugStringFormat( "ERROR: ClosePeHandle: VirtualFree(), %08X", GetLastError() );
 		return FALSE;
 	}
 
 
-	// Remove pointer
+	// Release pointers
 	hPe->hFile = NULL;
 	hPe->pDosHeader = NULL;
 	hPe->pNtHeader = NULL;
@@ -250,23 +304,21 @@ BOOL ClosePeHandle( PEHANDLE hPe )
 	hPe->pFile = NULL;
 
 
-	// Release PEHANDLE structure
+	// Release _PEHANDLE structure
 	if ( !VirtualFree( hPe, 0x00, MEM_RELEASE ) )
 	{
-		OutputDebugStringFormat( "ERROR: VirtualFree(hPe) %08X", GetLastError() );
+		OutputDebugStringFormat( "ERROR: ClosePeHandle: VirtualFree(), %08X", GetLastError() );
 		return FALSE;
 	}
 
+	// Release PEHANDLE
 	hPe = NULL;
 
 	return TRUE;
 }
 
 
-DWORD GetFileOffset( PEHANDLE hPe, PVOID pMemOffset )
-{
-	return (DWORD) pMemOffset - (DWORD) hPe->pFile;
-}
+
 
 
 // ==================== Normal functions
@@ -282,6 +334,22 @@ BOOL IsPeFile( PEHANDLE hPe )
 	}
 
 	return FALSE;
+}
+
+
+BOOL IsPe64File( PEHANDLE hPe )
+{
+	if ( !IsPeFile( hPe ) )
+	{
+		OutputDebugStringFormat( "ERROR: IsPe64File: IsPeFile() Fail" );
+		return FALSE;
+	}
+
+	// Check Optinal Header magic (0x020B)
+	if ( hPe->pNtHeader->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC )
+		return FALSE;
+
+	return TRUE;
 }
 
 
@@ -304,33 +372,103 @@ BOOL IsPeFileEx(PEHANDLE hPe, DWORD* dwResultImcompletePeFile)
 */
 
 
-BOOL HasExtraSection( PEHANDLE hPe )
+DWORD GetFileSizeBySection( PEHANDLE hPe )
 {
 	DWORD dwTotalSectionSize = 0;
 	DWORD sectionCnt = 0;
 	PIMAGE_SECTION_HEADER _pSectionHeader = NULL;
 
+
 	_pSectionHeader = hPe->pSectionHeader;
 
 	for ( sectionCnt = 1; sectionCnt <= ( hPe->pNtHeader->FileHeader.NumberOfSections ); sectionCnt++ )
 	{
+		// Find last section
 		if ( sectionCnt == ( hPe->pNtHeader->FileHeader.NumberOfSections ) )
 		{
+			// (file offset of last section) + (size of last section)
 			dwTotalSectionSize = _pSectionHeader->PointerToRawData;
 			dwTotalSectionSize += _pSectionHeader->SizeOfRawData;
 
-			break;
+			return dwTotalSectionSize;
 		}
 
+		// Move next section
 		_pSectionHeader++;
 	}
 
-	if ( dwTotalSectionSize < hPe->dwFileFullSize )
+	return PE_INVAILD_VALUE;
+}
+
+
+DWORD GetExtraSectionStartOffsetRAW( PEHANDLE hPe )
+{
+	DWORD dwFileSizeBySection = 0;
+
+	dwFileSizeBySection = GetFileSizeBySection( hPe );
+
+	if ( dwFileSizeBySection == PE_INVAILD_VALUE )
 	{
-		return TRUE;
+		OutputDebugStringFormat( "ERROR: GetExtraSectionStartOffset: GetExtraSectionStartOffsetRAW(), PE_INVAILD_VALUE" );
+		return PE_INVAILD_VALUE;
 	}
 
+	return dwFileSizeBySection;
+}
+
+
+/*
+* Function Name : HasExtraSection
+*
+* Argument(1) : PEHANDLE
+*
+* Detail :	Compare the last position of the last section in the file with the size obtained with the GetFileSize() function.
+*			ExtraSection exists when the size obtained by GetFIleSize() is larger.
+*
+* Return :	(SUCCESS) TRUE
+*			(FAIL) FALSE
+*/
+BOOL HasExtraSection( PEHANDLE hPe )
+{
+	DWORD dwTotalSectionSize = 0;
+
+	dwTotalSectionSize = GetFileSizeBySection( hPe );
+
+	// Compare size obtained by GetFIleSize()
+	if ( dwTotalSectionSize < hPe->dwFileFullSize )
+		return TRUE;
+
 	return FALSE;
+}
+
+
+DWORD DumpExtraSection( PEHANDLE hPe, HANDLE hFile, DWORD dwDumpSize )
+{
+	DWORD dwExtraSectionStartOffset = 0;
+	PDWORD pExtraSectionStartOffset = NULL;
+
+
+	if ( !HasExtraSection( hPe ) )
+	{
+		OutputDebugStringFormat( "ERROR: DumpExtraSection: HasExtraSection(), No Extrasection" );
+		return PE_INVAILD_VALUE;
+	}
+
+	dwExtraSectionStartOffset = GetExtraSectionStartOffsetRAW( hPe );
+	if ( dwExtraSectionStartOffset == PE_INVAILD_VALUE )
+	{
+		OutputDebugStringFormat( "ERROR: DumpExtraSection: GetExtraSectionStartOffsetRAW(), PE_INVAILD_VALUE" );
+		return PE_INVAILD_VALUE;
+	}
+
+	pExtraSectionStartOffset = (PDWORD)(hPe->pFile + dwExtraSectionStartOffset);
+
+	if ( dwDumpSize == SIZEOF_FULL_DUMP )
+	{
+	}
+	else
+	{
+	}
 }
 
 
@@ -367,6 +505,11 @@ DWORD RVAtoVA( PEHANDLE hPe, DWORD dwRva )
 }
 
 
+DWORD GetFileOffset( PEHANDLE hPe, PVOID pMemOffset )
+{
+	return (DWORD) pMemOffset - (DWORD) hPe->pFile;
+}
+
 
 // ======================================== IMAGE_DOS_HEADER functions
 
@@ -388,7 +531,7 @@ DWORD GetElfanewValue( PEHANDLE hPe )
 }
 
 
-BOOL SetDosSignature( PEHANDLE hPe, WORD wNewDosSignature )
+BOOL SetDosHeaderSignature( PEHANDLE hPe, WORD wNewDosSignature )
 {
 	if ( !WritePEValueToFile( hPe, GetFileOffset( hPe, &hPe->pDosHeader->e_magic ), wNewDosSignature, sizeof( WORD ) ) )
 	{
@@ -587,6 +730,42 @@ BOOL SetFileHeaderCharacteristics( PEHANDLE hPe, WORD wNewFileHeaderCharacterist
 
 // ======================================== IMAGE_OPTIONAL_HEADER functions
 
+WORD GetNtHeaderSignature( PEHANDLE hPe )
+{
+	return hPe->pNtHeader->OptionalHeader.Magic;
+}
+
+
+BYTE GetMajorLinkerVersion( PEHANDLE hPe )
+{
+	return hPe->pNtHeader->OptionalHeader.MajorLinkerVersion;
+}
+
+
+BYTE GetMinorLinkerVersion( PEHANDLE hPe )
+{
+	return hPe->pNtHeader->OptionalHeader.MinorLinkerVersion;
+}
+
+
+DWORD GetSizeOfCode( PEHANDLE hPe )
+{
+	return hPe->pNtHeader->OptionalHeader.SizeOfCode;
+}
+
+
+DWORD GetSizeOfInitializedData( PEHANDLE hPe )
+{
+	return hPe->pNtHeader->OptionalHeader.SizeOfInitializedData;
+}
+
+
+DWORD GetSizeOfUninitializedData( PEHANDLE hPe )
+{
+	return hPe->pNtHeader->OptionalHeader.SizeOfUninitializedData;
+}
+
+
 DWORD GetEntryPointRVA( PEHANDLE hPe )
 {
 	DWORD dwEntryPointRva = 0;
@@ -613,15 +792,135 @@ DWORD GetEntryPointRAW( PEHANDLE hPe )
 }
 
 
+DWORD GetBaseOfCode( PEHANDLE hPe )
+{
+	return hPe->pNtHeader->OptionalHeader.BaseOfCode;
+}
+
+
+DWORD GetBaseOfData( PEHANDLE hPe )
+{
+	return hPe->pNtHeader->OptionalHeader.BaseOfData;
+}
+
+
 DWORD GetImageBase( PEHANDLE hPe )
 {
 	return hPe->pNtHeader->OptionalHeader.ImageBase;
 }
 
 
+DWORD GetSectionAlignment( PEHANDLE hPe )
+{
+	return hPe->pNtHeader->OptionalHeader.SectionAlignment;
+}
+
+
+DWORD GetFileAlignment( PEHANDLE hPe )
+{
+	return hPe->pNtHeader->OptionalHeader.FileAlignment;
+}
+
+
+WORD GetMajorOperatingSystemVersion( PEHANDLE hPe )
+{
+	return hPe->pNtHeader->OptionalHeader.MajorOperatingSystemVersion;
+}
+
+
+WORD GetMinorOperatingSystemVersion( PEHANDLE hPe )
+{
+	return hPe->pNtHeader->OptionalHeader.MinorOperatingSystemVersion;
+}
+
+
+WORD GetMajorImageVersion( PEHANDLE hPe )
+{
+	return hPe->pNtHeader->OptionalHeader.MajorImageVersion;
+}
+
+
+WORD GetMinorImageVersion( PEHANDLE hPe )
+{
+	return hPe->pNtHeader->OptionalHeader.MinorImageVersion;
+}
+
+
+WORD GetMajorSubsystemVersion( PEHANDLE hPe )
+{
+	return hPe->pNtHeader->OptionalHeader.MajorSubsystemVersion;
+}
+
+
+WORD GetMinorSubsystemVersion( PEHANDLE hPe )
+{
+	return hPe->pNtHeader->OptionalHeader.MinorSubsystemVersion;
+}
+
+
+DWORD GetWin32VersionValue( PEHANDLE hPe )
+{
+	return hPe->pNtHeader->OptionalHeader.Win32VersionValue;
+}
+
+
 DWORD GetSizeOfImage( PEHANDLE hPe )
 {
 	return hPe->pNtHeader->OptionalHeader.SizeOfImage;
+}
+
+
+DWORD GetCheckSum( PEHANDLE hPe )
+{
+	return hPe->pNtHeader->OptionalHeader.CheckSum;
+}
+
+
+WORD GetSubsystem( PEHANDLE hPe )
+{
+	return hPe->pNtHeader->OptionalHeader.Subsystem;
+}
+
+
+WORD GetDllCharacteristics( PEHANDLE hPe )
+{
+	return hPe->pNtHeader->OptionalHeader.DllCharacteristics;
+}
+
+
+DWORD GetSizeOfStackReserve( PEHANDLE hPe )
+{
+	return hPe->pNtHeader->OptionalHeader.SizeOfStackReserve;
+}
+
+
+DWORD GetSizeOfStackCommit( PEHANDLE hPe )
+{
+	return hPe->pNtHeader->OptionalHeader.SizeOfStackCommit;
+}
+
+
+DWORD GetSizeOfHeapReserve( PEHANDLE hPe )
+{
+	return hPe->pNtHeader->OptionalHeader.SizeOfHeapReserve;
+}
+
+
+DWORD GetSizeOfHeapCommit( PEHANDLE hPe )
+{
+	return hPe->pNtHeader->OptionalHeader.SizeOfHeapCommit;
+}
+
+
+DWORD GetLoaderFlags( PEHANDLE hPe )
+{
+	return hPe->pNtHeader->OptionalHeader.LoaderFlags;
+}
+
+
+DWORD GetNumberOfRvaAndSizes( PEHANDLE hPe )
+{
+	return hPe->pNtHeader->OptionalHeader.NumberOfRvaAndSizes;
 }
 
 
