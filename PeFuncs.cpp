@@ -2,6 +2,7 @@
 #include "privatePeFuncs.h"
 
 
+
 // PEHANDLE Structure
 struct _PEHANDLE
 {
@@ -11,19 +12,10 @@ struct _PEHANDLE
 	PIMAGE_DOS_HEADER pDosHeader;
 	PIMAGE_NT_HEADERS pNtHeader;
 	PIMAGE_SECTION_HEADER pSectionHeader;
+	PIMAGE_IMPORT_DESCRIPTOR pImportDescriptor;
 
 	PBYTE pFile;
 };
-
-
-// ----- Value for inner function
-#define FIRST_SECTION 0x01
-#define SIZE_OF_IMAGE_NT_HEADER_SIGNATURE 0x04
-
-// ----- Macro
-// Man index(1) -> Computer index(0)
-#define ConvertUserIndex(REAL_INDEX) (--REAL_INDEX)
-
 
 
 
@@ -33,19 +25,25 @@ BOOL ParsePE( PEHANDLE hPe )
 {
 	if ( !SetDosHeaderStructure( hPe ) )
 	{
-		OutputDebugStringFormat( "ERROR: ParsePE(), fail to SetDosHeaderStructure() function." );
+		OutputDebugStringFormat( "ERROR: ParsePE(): SetDosHeaderStructure() fail" );
 		return FALSE;
 	}
 
 	if ( !SetNtHeaderStructure( hPe ) )
 	{
-		OutputDebugStringFormat( "ERROR: ParsePE(), fail to SetNtHeaderStructure() function." );
+		OutputDebugStringFormat( "ERROR: ParsePE(): SetNtHeaderStructure() fail" );
 		return FALSE;
 	}
 
 	if ( !SetSectionHeaderStructure( hPe ) )
 	{
-		OutputDebugStringFormat( "ERROR: ParsePE(), fail to SetSectionHeaderStructure() function." );
+		OutputDebugStringFormat( "ERROR: ParsePE(): SetSectionHeaderStructure() fail" );
+		return FALSE;
+	}
+
+	if ( !SetImportDescriptorStructure( hPe ) )
+	{
+		OutputDebugStringFormat( "ERROR: ParsePE(): SetImportDescriptorStructure() fail" );
 		return FALSE;
 	}
 
@@ -92,10 +90,52 @@ BOOL SetSectionHeaderStructure( PEHANDLE hPe )
 }
 
 
+BOOL SetImportDescriptorStructure( PEHANDLE hPe )
+{
+	DWORD dwImportDirectoryRva = 0;
+	DWORD dwImportDirectoryRaw = 0;
+
+	dwImportDirectoryRva = GetImportDirectoryAddr( hPe );
+	if ( dwImportDirectoryRva == NO_DATADIRECTORY )
+	{
+		return FALSE;
+	}
+
+	dwImportDirectoryRaw = RVAtoRAW( hPe, dwImportDirectoryRva );
+	if ( dwImportDirectoryRaw == PE_INVAILD_VALUE )
+	{
+		return FALSE;
+	}
+
+	hPe->pImportDescriptor = (PIMAGE_IMPORT_DESCRIPTOR) ( hPe->pFile + dwImportDirectoryRaw );
+
+	return TRUE;
+}
+
+
 BOOL CheckSectionNumberRange( PEHANDLE hPe, DWORD nSectionCnt )
 {
-	if ( ( 0 < nSectionCnt ) && ( nSectionCnt <= hPe->pNtHeader->FileHeader.NumberOfSections ) )
+	DWORD dwNumberOfSections = 0;
+
+	dwNumberOfSections = GetNumberOfSections( hPe );
+	if ( ( 0 < nSectionCnt ) && ( nSectionCnt <= dwNumberOfSections ) )
+	{
 		return TRUE;
+	}
+
+	return FALSE;
+}
+
+
+BOOL CheckImportDescriptorNumberRange( PEHANDLE hPe, DWORD nImportDescriptorCnt )
+{
+	DWORD dwNumberOfImportDescriptor = 0;
+
+	dwNumberOfImportDescriptor = GetNumberOfImportDescriptor( hPe );
+	if ( ( 0 < nImportDescriptorCnt ) && ( nImportDescriptorCnt <= dwNumberOfImportDescriptor ) )
+	{
+		return TRUE;
+	}
 
 	return FALSE;
 }
@@ -372,6 +412,18 @@ BOOL IsPeFileEx(PEHANDLE hPe, DWORD* dwResultImcompletePeFile)
 */
 
 
+BOOL IsDotNetPeFile( PEHANDLE hPe )
+{
+	// DataDirectory[14] : CLI HEader
+	DWORD CliHeaderAddr = hPe->pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].VirtualAddress;
+
+	if ( CliHeaderAddr != 0 )
+		return TRUE;
+
+	return FALSE;
+}
+
+
 DWORD GetFileSizeBySection( PEHANDLE hPe )
 {
 	DWORD dwTotalSectionSize = 0;
@@ -494,8 +546,8 @@ DWORD RVAtoRAW( PEHANDLE hPe, DWORD dwRva )
 		_pSectionHeader++;
 	}
 
-	//printf("Cannot Search RVA Range.\n");
-	return 0;
+	// Cannot Search RVA Range
+	return PE_INVAILD_VALUE;
 }
 
 
@@ -598,17 +650,22 @@ DWORD GetTimeDataStamp( PEHANDLE hPe )
 }
 
 
-char* GetTimeDataStampToTime( PEHANDLE hPe )
+BOOL GetTimeDataStampToTime( PEHANDLE hPe, CHAR* szTimeStamp )
 {
-	char* pszTimeStamp = NULL;
 	DWORD dwTimeDataStamp = 0;
+	DWORD dwStrLen = 0;
 
-	pszTimeStamp = (char*) malloc( sizeof( MAX_PATH ) );
 	dwTimeDataStamp = GetTimeDataStamp( hPe );
 
-	_GetTimeDataStampToTime( pszTimeStamp, MAX_PATH, dwTimeDataStamp );
+	_GetTimeDataStampToTime( szTimeStamp, TIMEDATASTAMP_STRING_LENGTH, dwTimeDataStamp );
+	
+	dwStrLen = strlen( szTimeStamp ) + SIZEOF_NULL;
+	if ( dwStrLen != TIMEDATASTAMP_STRING_LENGTH )
+	{
+		return FALSE;
+	}
 
-	return pszTimeStamp;
+	return TRUE;
 }
 
 
@@ -938,12 +995,12 @@ DWORD GetSectionHeaderOffset( PEHANDLE hPe, DWORD nSection )
 
 	ConvertUserIndex( nSection );
 
-	dwOffsetFirstSectionHeader = GetElfanewValue( hPe ) + SIZE_OF_IMAGE_NT_HEAEDER;
-	return dwOffsetFirstSectionHeader + ( SIZE_OF_IMAGE_SECTION_HEADER * nSection );
+	dwOffsetFirstSectionHeader = GetElfanewValue( hPe ) + SIZEOF_IMAGE_NT_HEAEDER32;
+	return dwOffsetFirstSectionHeader + ( IMAGE_SIZEOF_SECTION_HEADER * nSection );
 }
 
 
-DWORD GetVirtualAddress( PEHANDLE hPe, DWORD nSection )
+DWORD GetSectionVirtualAddress( PEHANDLE hPe, DWORD nSection )
 {
 	DWORD sectionVirtualAddress = 0;
 
@@ -960,7 +1017,7 @@ DWORD GetVirtualAddress( PEHANDLE hPe, DWORD nSection )
 }
 
 
-DWORD GetVirtualSize( PEHANDLE hPe, DWORD nSection )
+DWORD GetSectionVirtualSize( PEHANDLE hPe, DWORD nSection )
 {
 	DWORD sectionVirtualSize = 0;
 
@@ -1010,4 +1067,177 @@ DWORD GetPointerToRawData( PEHANDLE hPe, DWORD nSection )
 	return sectionPointerToRawdata;
 }
 
+
+
+// =============================== IMAGE_DATA_DIRECTORY Functions ===========================
+
+BOOL HasImportDirectory( PEHANDLE hPe )
+{
+	DWORD dwImportTableVA = 0;
+
+	dwImportTableVA = hPe->pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress;
+	if ( dwImportTableVA == 0 )
+	{
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+
+DWORD GetImportDirectoryAddr( PEHANDLE hPe )
+{
+	if ( !HasImportDirectory( hPe ) )
+	{
+		return NO_DATADIRECTORY;
+	}
+
+	return hPe->pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress;
+}
+
+
+// ============================== IMAGE_IMPORT_DESCRIPTOR Functions =========================
+
+DWORD GetNumberOfImportDescriptor( PEHANDLE hPe )
+{
+	DWORD dwNumberOfImportDescriptor = 0;
+	PIMAGE_IMPORT_DESCRIPTOR _pImportDescriptor = NULL;
+
+	_pImportDescriptor = hPe->pImportDescriptor;
+
+	while ( TRUE )
+	{
+		// Couinting number of Import Descriptor
+		if ( _pImportDescriptor->OriginalFirstThunk != 0x00000000 )
+		{
+			dwNumberOfImportDescriptor += 1;
+
+			// Infinite Loop Prevention Exception (Limit number : 50000)
+			if ( dwNumberOfImportDescriptor > 0xC350 )
+			{
+				return PE_INVAILD_VALUE;
+			}
+
+			_pImportDescriptor += 1;
+		}
+		// pImportDescriptor->OriginalFirstThunk == 0x00000000
+		else
+		{
+			// Add last Import Descriptor (0x00000000)
+			dwNumberOfImportDescriptor += 1;
+			break;
+		}
+	}
+
+	return dwNumberOfImportDescriptor;
+}
+
+
+DWORD GetOriginalFirstThunk( PEHANDLE hPe, DWORD nImportDescriptor )
+{
+	PIMAGE_IMPORT_DESCRIPTOR _pImportDescriptor = NULL;
+
+
+	if ( !CheckImportDescriptorNumberRange( hPe, nImportDescriptor ) )
+	{
+		return PE_INVAILD_VALUE;
+	}
+
+	ConvertUserIndex( nImportDescriptor );
+	_pImportDescriptor = hPe->pImportDescriptor + nImportDescriptor;
+
+	return _pImportDescriptor->OriginalFirstThunk;
+}
+
+
+DWORD GetImportTimeDataStamp( PEHANDLE hPe, DWORD nImportDescriptor )
+{
+	PIMAGE_IMPORT_DESCRIPTOR _pImportDescriptor = NULL;
+
+	if ( !CheckImportDescriptorNumberRange( hPe, nImportDescriptor ) )
+	{
+		return PE_INVAILD_VALUE;
+	}
+
+	ConvertUserIndex( nImportDescriptor );
+	_pImportDescriptor = hPe->pImportDescriptor + nImportDescriptor;
+
+	return _pImportDescriptor->TimeDateStamp;
+}
+
+
+DWORD GetForwarderChain( PEHANDLE hPe, DWORD nImportDescriptor )
+{
+	PIMAGE_IMPORT_DESCRIPTOR _pImportDescriptor = NULL;
+
+	if ( !CheckImportDescriptorNumberRange( hPe, nImportDescriptor ) )
+	{
+		return PE_INVAILD_VALUE;
+	}
+
+	ConvertUserIndex( nImportDescriptor );
+	_pImportDescriptor = hPe->pImportDescriptor + nImportDescriptor;
+
+	return _pImportDescriptor->ForwarderChain;
+}
+
+
+DWORD GetName( PEHANDLE hPe, DWORD nImportDescriptor )
+{
+	PIMAGE_IMPORT_DESCRIPTOR _pImportDescriptor = NULL;
+
+	if ( !CheckImportDescriptorNumberRange( hPe, nImportDescriptor ) )
+	{
+		return PE_INVAILD_VALUE;
+	}
+
+	ConvertUserIndex( nImportDescriptor );
+	_pImportDescriptor = hPe->pImportDescriptor + nImportDescriptor;
+
+	return _pImportDescriptor->Name;
+}
+
+
+DWORD GetNameToString( PEHANDLE hPe, DWORD nImportDescriptor, CHAR* szDllName )
+{
+	PIMAGE_IMPORT_DESCRIPTOR _pImportDescriptor = NULL;
+	CHAR* pName = NULL;
+	DWORD nameRva = 0;
+	DWORD nameRaw = 0;
+	DWORD dwDllNameLen = 0;
+
+	if ( !CheckImportDescriptorNumberRange( hPe, nImportDescriptor ) )
+	{
+		return PE_INVAILD_VALUE;
+	}
+
+	ConvertUserIndex( nImportDescriptor );
+	_pImportDescriptor = hPe->pImportDescriptor + nImportDescriptor;
+
+	nameRva = _pImportDescriptor->Name;
+	nameRaw = RVAtoRAW( hPe, nameRva );
+
+	pName = (CHAR*)(hPe->pFile + nameRaw);
+
+	dwDllNameLen = strlen( pName );
+	strncpy( szDllName, pName, dwDllNameLen );
+
+	return dwDllNameLen;
+}
+
+
+DWORD GetFirstThunk( PEHANDLE hPe, DWORD nImportDescriptor )
+{
+	PIMAGE_IMPORT_DESCRIPTOR _pImportDescriptor = NULL;
+
+	if ( !CheckImportDescriptorNumberRange( hPe, nImportDescriptor ) )
+	{
+		return PE_INVAILD_VALUE;
+	}
+
+	ConvertUserIndex( nImportDescriptor );
+	_pImportDescriptor = hPe->pImportDescriptor + nImportDescriptor;
+
+	return _pImportDescriptor->FirstThunk;
+}
 

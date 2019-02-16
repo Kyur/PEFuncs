@@ -9,6 +9,8 @@
 #define MAX_TYPE_NAME_LIST 0x20
 
 
+
+
 typedef struct __TYPE_NAME_LIST
 {
 	DWORD dwTypeValue[MAX_TYPE_NAME_LIST];

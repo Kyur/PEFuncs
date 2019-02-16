@@ -1,11 +1,13 @@
 #define PE_INVAILD_VALUE 0xFFFFFFFF
+#define SIZEOF_FULL_DUMP 0x00
+#define NO_DATADIRECTORY 0x00
+#define TIMEDATASTAMP_STRING_LENGTH 0x14
+
+#define SIZEOF_IMAGE_NT_HEAEDER32 sizeof(IMAGE_NT_HEADERS32)
+#define SIZEOF_IMAGE_NT_HEAEDER64 sizeof(IMAGE_NT_HEADERS64)
+
 
 typedef struct _PEHANDLE *PEHANDLE;
-
-#define UNSTABLE_PE_HEADER_SIGNATURE_MZ 0x00000001
-#define UNSTABLE_PE_HEADER_SIGNATURE_PE 0x00000002
-
-#define SIZEOF_FULL_DUMP 0x00
 
 
 // ================================ Create / Close PE Handle ================================
@@ -18,6 +20,7 @@ EXTERN_C __declspec( dllexport ) BOOL ClosePeHandle( PEHANDLE hPe );
 
 EXTERN_C __declspec( dllexport ) BOOL IsPeFile( PEHANDLE hPe );
 EXTERN_C __declspec( dllexport ) BOOL IsPe64File( PEHANDLE hPe );
+EXTERN_C __declspec( dllexport ) BOOL IsDotNetPeFile( PEHANDLE hPe );
 
 EXTERN_C __declspec( dllexport ) DWORD GetFileSizeBySection( PEHANDLE hPe );
 EXTERN_C __declspec( dllexport ) DWORD GetExtraSectionStartOffsetRAW( PEHANDLE hPe );
@@ -41,7 +44,7 @@ EXTERN_C __declspec( dllexport ) WORD GetMachineCode( PEHANDLE hPe );
 EXTERN_C __declspec( dllexport ) BOOL GetMachineCodeName( PEHANDLE hPe, char* szMachineCodeName );
 EXTERN_C __declspec( dllexport ) WORD GetNumberOfSections( PEHANDLE hPe );
 EXTERN_C __declspec( dllexport ) DWORD GetTimeDataStamp( PEHANDLE hPe );
-EXTERN_C __declspec( dllexport ) char* GetTimeDataStampToTime( PEHANDLE hPe );
+EXTERN_C __declspec( dllexport ) BOOL GetTimeDataStampToTime( PEHANDLE hPe, CHAR* szTimeStamp );
 EXTERN_C __declspec( dllexport ) DWORD GetPointerToSymbolTable( PEHANDLE hPe );
 EXTERN_C __declspec( dllexport ) DWORD GetNumberOfSymbols( PEHANDLE hPe );
 EXTERN_C __declspec( dllexport ) WORD GetSizeOfOptionalHeader( PEHANDLE hPe );
@@ -92,10 +95,24 @@ EXTERN_C __declspec( dllexport ) DWORD GetNumberOfRvaAndSizes( PEHANDLE hPe );
 
 // =============================== IMAGE_SECTION_HEADER Functions ===========================
 
-EXTERN_C __declspec( dllexport ) DWORD GetSectionHeaderOffset( PEHANDLE hPe, DWORD nSection );
-EXTERN_C __declspec( dllexport ) DWORD GetVirtualAddress( PEHANDLE hPe, DWORD nSection );
-EXTERN_C __declspec( dllexport ) DWORD GetVirtualSize( PEHANDLE hPe, DWORD nSection );
+EXTERN_C __declspec( dllexport ) DWORD GetSectionVirtualAddress( PEHANDLE hPe, DWORD nSection );
+EXTERN_C __declspec( dllexport ) DWORD GetSectionVirtualSize( PEHANDLE hPe, DWORD nSection );
 EXTERN_C __declspec( dllexport ) DWORD GetSizeOfRawData( PEHANDLE hPe, DWORD nSection );
 EXTERN_C __declspec( dllexport ) DWORD GetPointerToRawData( PEHANDLE hPe, DWORD nSection );
 
 
+// =============================== IMAGE_DATA_DIRECTORY Functions ===========================
+
+EXTERN_C __declspec( dllexport ) DWORD GetImportDirectoryAddr( PEHANDLE hPe );
+
+
+// ============================== IMAGE_IMPORT_DESCRIPTOR Functions =========================
+
+EXTERN_C __declspec( dllexport ) DWORD GetNumberOfImportDescriptor( PEHANDLE hPe );
+
+EXTERN_C __declspec( dllexport ) DWORD GetOriginalFirstThunk( PEHANDLE hPe, DWORD nImportDescriptor );
+EXTERN_C __declspec( dllexport ) DWORD GetImportTimeDataStamp( PEHANDLE hPe, DWORD nImportDescriptor );
+EXTERN_C __declspec( dllexport ) DWORD GetForwarderChain( PEHANDLE hPe, DWORD nImportDescriptor );
+EXTERN_C __declspec( dllexport ) DWORD GetName( PEHANDLE hPe, DWORD nImportDescriptor );
+EXTERN_C __declspec( dllexport ) DWORD GetNameToString( PEHANDLE hPe, DWORD nImportDescriptor, CHAR* szDllName );
+EXTERN_C __declspec( dllexport ) DWORD GetFirstThunk( PEHANDLE hPe, DWORD nImportDescriptor );
